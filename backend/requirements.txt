@@ -1,5 +1,5 @@
 fastapi
-uvicorn
+uvicorn[standard]
 pandas
 numpy
 scikit-learn==1.6.1
@@ -11,3 +11,4 @@ python-multipart
 plotly
 sqlalchemy
 psycopg2-binary
+websockets
