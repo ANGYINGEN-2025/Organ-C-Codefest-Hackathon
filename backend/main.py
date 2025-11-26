@@ -1,5 +1,11 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from limiter_config import limiter  # Import rate limiter
+from auth import AUTH_ENABLED, REQUIRED_API_KEY  # Import auth config
+import logging
 
 # ROUTES
 from routes.iot import router as iot_router
@@ -23,7 +29,44 @@ from models import Alert, AnomalyLog, ClusterLog, RiskLog
 
 API_V1_PREFIX = "/api/v1"
 
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
+
+
+# ============================================
+# LIFESPAN (Startup/Shutdown)
+# ============================================
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Handle application startup and shutdown events.
+    Replaces deprecated @app.on_event("startup") pattern.
+    """
+    # Startup: Create database tables
+    logger.info("🚀 Starting up...")
+    Base.metadata.create_all(bind=engine)
+    logger.info("✅ Database tables created/verified")
+    
+    # Log authentication status
+    if AUTH_ENABLED:
+        logger.info(f"🔐 API Key Authentication: ENABLED")
+        logger.info(f"   Set API_KEY environment variable to require authentication")
+    else:
+        logger.info("🔓 API Key Authentication: DISABLED (development mode)")
+        logger.info("   Set AUTH_ENABLED=true or API_KEY=<key> to enable")
+    
+    yield  # App runs here
+    
+    # Shutdown (optional cleanup)
+    logger.info("👋 Shutting down...")
+
+
 app = FastAPI(
+    lifespan=lifespan,
     title="Enterprise Predictive Analytics API",
     version="1.0.0",
     description="""
@@ -41,6 +84,10 @@ app = FastAPI(
     """
 )
 
+# Add rate limiter to app
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 
 # ============================================
 # MIDDLEWARE (must be before routes)
@@ -52,15 +99,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-# ============================================
-# STARTUP EVENT → Create tables on Render
-# ============================================
-@app.on_event("startup")
-def startup():
-    print("🚀 Creating database tables (if not exist)...")
-    Base.metadata.create_all(bind=engine)
 
 
 # ============================================

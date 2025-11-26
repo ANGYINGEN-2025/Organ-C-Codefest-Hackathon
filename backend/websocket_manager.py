@@ -13,6 +13,9 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
+# Constants for anomaly detection
+ANOMALY_DETECTED = -1  # Isolation Forest returns -1 for anomalies
+
 
 class ConnectionManager:
     """
@@ -50,27 +53,53 @@ class ConnectionManager:
         logger.info(f"🔌 Client disconnected. Total connections: {len(self.active_connections)}")
     
     async def send_personal_message(self, message: dict, websocket: WebSocket):
-        """Send message to a specific client"""
+        """
+        Send message to a specific client.
+        
+        Handles disconnections gracefully by removing the client from active connections.
+        """
         try:
             await websocket.send_json(message)
+        except (ConnectionError, RuntimeError) as e:
+            # Client disconnected
+            logger.debug(f"Client disconnected during personal message: {e}")
+            self.disconnect(websocket)
         except Exception as e:
-            logger.error(f"Failed to send message: {e}")
+            # Other unexpected errors
+            logger.error(f"Failed to send personal message: {e}", exc_info=True)
             self.disconnect(websocket)
     
     async def broadcast(self, message: dict):
-        """Broadcast message to ALL connected clients"""
+        """
+        Broadcast message to ALL connected clients.
+        
+        Handles errors gracefully - if a client disconnects or fails,
+        it's removed from the active connections list without affecting others.
+        """
+        if not self.active_connections:
+            # No clients connected, nothing to broadcast
+            return
+        
         disconnected = []
         
         for connection in self.active_connections:
             try:
                 await connection.send_json(message)
+            except (ConnectionError, RuntimeError) as e:
+                # Client disconnected or connection closed
+                logger.debug(f"Client disconnected during broadcast: {e}")
+                disconnected.append(connection)
             except Exception as e:
-                logger.error(f"Broadcast failed for a client: {e}")
+                # Other unexpected errors
+                logger.error(f"Unexpected error broadcasting to client: {e}", exc_info=True)
                 disconnected.append(connection)
         
         # Clean up disconnected clients
         for conn in disconnected:
-            self.disconnect(conn)
+            try:
+                self.disconnect(conn)
+            except Exception as e:
+                logger.warning(f"Error during disconnect cleanup: {e}")
     
     async def broadcast_iot_update(self, data: dict, analysis_result: dict):
         """
@@ -78,40 +107,53 @@ class ConnectionManager:
         
         This is called when new IoT data is ingested.
         """
-        message = {
-            "type": "iot_update",
-            "timestamp": datetime.utcnow().isoformat(),
-            "data": {
-                "store": data.get("store"),
-                "dept": data.get("dept"),
-                "weekly_sales": data.get("Weekly_Sales"),
-                "temperature": data.get("Temperature"),
-                "is_holiday": data.get("IsHoliday")
-            },
-            "analysis": {
-                "anomaly_detected": analysis_result.get("anomaly") == -1,
-                "anomaly_score": analysis_result.get("anomaly_score"),
-                "risk_level": analysis_result.get("risk_level"),
-                "risk_score": analysis_result.get("risk_score"),
-                "cluster": analysis_result.get("cluster")
+        try:
+            message = {
+                "type": "iot_update",
+                "timestamp": datetime.utcnow().isoformat(),
+                "data": {
+                    "store": data.get("store"),
+                    "dept": data.get("dept"),
+                    "weekly_sales": data.get("Weekly_Sales"),
+                    "temperature": data.get("Temperature"),
+                    "is_holiday": data.get("IsHoliday")
+                },
+                "analysis": {
+                    "anomaly_detected": analysis_result.get("anomaly") == ANOMALY_DETECTED,
+                    "anomaly_score": analysis_result.get("anomaly_score"),
+                    "risk_level": analysis_result.get("risk_level"),
+                    "risk_score": analysis_result.get("risk_score"),
+                    "cluster": analysis_result.get("cluster")
+                }
             }
-        }
-        await self.broadcast(message)
-        logger.info(f"📡 Broadcasted IoT update to {len(self.active_connections)} clients")
+            await self.broadcast(message)
+            logger.info(f"📡 Broadcasted IoT update to {len(self.active_connections)} clients")
+        except Exception as e:
+            # Log error but don't re-raise - let caller handle it
+            logger.error(f"Failed to create/broadcast IoT update message: {e}", exc_info=True)
+            raise  # Re-raise so caller can handle gracefully
     
     async def broadcast_alert(self, store: int, dept: int, message: str, risk_score: int):
-        """Broadcast a high-priority alert"""
-        alert = {
-            "type": "alert",
-            "priority": "HIGH",
-            "timestamp": datetime.utcnow().isoformat(),
-            "store": store,
-            "dept": dept,
-            "message": message,
-            "risk_score": risk_score
-        }
-        await self.broadcast(alert)
-        logger.warning(f"🚨 Alert broadcasted: Store {store}, Dept {dept}")
+        """
+        Broadcast a high-priority alert.
+        
+        Raises exception if broadcast fails, so caller can handle gracefully.
+        """
+        try:
+            alert = {
+                "type": "alert",
+                "priority": "HIGH",
+                "timestamp": datetime.utcnow().isoformat(),
+                "store": store,
+                "dept": dept,
+                "message": message,
+                "risk_score": risk_score
+            }
+            await self.broadcast(alert)
+            logger.warning(f"🚨 Alert broadcasted: Store {store}, Dept {dept}")
+        except Exception as e:
+            logger.error(f"Failed to create/broadcast alert message: {e}", exc_info=True)
+            raise  # Re-raise so caller can handle gracefully
     
     def get_connection_count(self) -> int:
         """Get number of active connections"""

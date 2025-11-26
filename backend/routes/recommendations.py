@@ -2,12 +2,16 @@ from fastapi import APIRouter, HTTPException, Query
 import pandas as pd
 from data_loader import load_raw_data, get_time_series
 from ml.model import get_model
+from services.risk_service import calculate_risk_score, HIGH_RISK_CLUSTERS  # Shared risk calculation
 from routes.schemas import (
     RecommendationsResponse, 
     Recommendation, 
     RecommendationType,
     RiskLevel
 )
+
+# Constants for anomaly detection
+ANOMALY_DETECTED = -1  # Isolation Forest returns -1 for anomalies
 
 router = APIRouter()
 
@@ -37,7 +41,7 @@ def generate_recommendations(store_id: int, risk_level: str, cluster_id: int,
         ))
     
     # Anomaly-based recommendations
-    if anomaly_flag == -1:
+    if anomaly_flag == ANOMALY_DETECTED:
         recommendations.append(Recommendation(
             type=RecommendationType.PRICING,
             priority=RiskLevel.MEDIUM,
@@ -46,7 +50,7 @@ def generate_recommendations(store_id: int, risk_level: str, cluster_id: int,
         ))
     
     # Cluster-based recommendations
-    if cluster_id in [6, 7]:
+    if cluster_id in HIGH_RISK_CLUSTERS:
         recommendations.append(Recommendation(
             type=RecommendationType.MAINTENANCE,
             priority=RiskLevel.MEDIUM,
@@ -132,23 +136,17 @@ def get_recommendations(
     # Get anomaly detection results
     anomaly_result = model.detect_anomalies(analysis_df).iloc[0]
     anomaly_flag = int(anomaly_result["anomaly"])
+    anomaly_score = float(anomaly_result["anomaly_score"])
     
     # Get cluster
     cluster_id = model.cluster(analysis_df)
     
-    # Calculate risk level (same logic as risk.py)
-    score = 0
-    if anomaly_flag == -1:
-        score += 40
-    if cluster_id in [6, 7]:
-        score += 20
-    
-    if score >= 60:
-        risk_level = "HIGH"
-    elif score >= 30:
-        risk_level = "MEDIUM"
-    else:
-        risk_level = "LOW"
+    # Calculate risk level (using shared service)
+    score, risk_level = calculate_risk_score(
+        anomaly_flag=anomaly_flag,
+        anomaly_score=anomaly_score,
+        cluster_id=cluster_id
+    )
     
     # Get forecast trend
     try:
