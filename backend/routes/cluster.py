@@ -1,23 +1,13 @@
 from fastapi import APIRouter
-from pydantic import BaseModel
 import pandas as pd
-from ml.model import SalesModel
+from ml.model import get_model
+from routes.schemas import SalesDataInput, ClusterResponse
 
 router = APIRouter()
-model = SalesModel()
 
-class ClusterInput(BaseModel):
-    Weekly_Sales: float
-    Temperature: float
-    Fuel_Price: float
-    CPI: float
-    Unemployment: float
-    Store: int
-    Dept: int
-    IsHoliday: int
-
-@router.post("/")
-def cluster(data: ClusterInput):
+@router.post("/", response_model=ClusterResponse)
+def cluster(data: SalesDataInput):
+    model = get_model()  # Get singleton instance
     df = pd.DataFrame([data.dict()])
     cluster_id = model.cluster(df)
     return {"cluster": cluster_id}

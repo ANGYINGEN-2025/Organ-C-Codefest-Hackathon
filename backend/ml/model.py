@@ -1,15 +1,24 @@
 import joblib
 import pandas as pd
 import numpy as np
+import logging
+from pathlib import Path
+
+# Setup logging
+logger = logging.getLogger(__name__)
+
+# Get the directory where this file is located
+BASE_DIR = Path(__file__).resolve().parent
+
 
 class SalesModel:
     def __init__(self):
-        # Load models from Colab
-        self.forecast_model = joblib.load("ml/forecast_model.pkl")
-        self.preprocessor = joblib.load("ml/preprocessor.pkl")
-        self.scaler_anomaly = joblib.load("ml/scaler_anomaly.pkl")
-        self.anomaly_model = joblib.load("ml/iso_model.pkl")
-        self.kmeans_model = joblib.load("ml/kmeans_model.pkl")
+        # Load models using absolute paths
+        self.forecast_model = joblib.load(BASE_DIR / "forecast_model.pkl")
+        self.preprocessor = joblib.load(BASE_DIR / "preprocessor.pkl")
+        self.scaler_anomaly = joblib.load(BASE_DIR / "scaler_anomaly.pkl")
+        self.anomaly_model = joblib.load(BASE_DIR / "iso_model.pkl")
+        self.kmeans_model = joblib.load(BASE_DIR / "kmeans_model.pkl")
 
     # -----------------------------
     # 1) PROPHET FORECASTING
@@ -30,20 +39,21 @@ class SalesModel:
     # 2) ANOMALY DETECTION (IsolationForest)
     # -----------------------------
     def detect_anomalies(self, input_df: pd.DataFrame):
-        numeric_cols = ['Weekly_Sales','Temperature','Fuel_Price','CPI','Unemployment']
+        df = input_df.copy()  # Work on copy to avoid side effects
+        numeric_cols = ['Weekly_Sales', 'Temperature', 'Fuel_Price', 'CPI', 'Unemployment']
 
         # Scale numeric features
-        X_scaled = self.scaler_anomaly.transform(input_df[numeric_cols])
+        X_scaled = self.scaler_anomaly.transform(df[numeric_cols])
 
         # Predict with IsoForest
         preds = self.anomaly_model.predict(X_scaled)      # -1 = anomaly, 1 = normal
         scores = self.anomaly_model.decision_function(X_scaled)
 
         # Add back into dataframe
-        input_df["anomaly"] = preds
-        input_df["anomaly_score"] = scores
+        df["anomaly"] = preds
+        df["anomaly_score"] = scores
 
-        return input_df
+        return df
 
     # -----------------------------
     # 3) KMEANS CLUSTERING
@@ -52,3 +62,19 @@ class SalesModel:
         X = self.preprocessor.transform(input_df)
         cluster_id = int(self.kmeans_model.predict(X)[0])
         return cluster_id
+
+
+# ============================================
+# SINGLETON PATTERN - Load model only ONCE
+# ============================================
+_model_instance = None
+
+
+def get_model() -> SalesModel:
+    """Get the singleton SalesModel instance. Creates it on first call."""
+    global _model_instance
+    if _model_instance is None:
+        logger.info("🔄 Loading ML models (one-time)...")
+        _model_instance = SalesModel()
+        logger.info("✅ Models loaded successfully!")
+    return _model_instance

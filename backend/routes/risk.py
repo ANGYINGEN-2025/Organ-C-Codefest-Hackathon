@@ -1,47 +1,66 @@
 from fastapi import APIRouter
 import pandas as pd
-from ml.model import SalesModel
-from pydantic import BaseModel
+from ml.model import get_model
+from routes.schemas import SalesDataInput, RiskResponse
 
 router = APIRouter()
-model = SalesModel()
 
-class RiskInput(BaseModel):
-    Weekly_Sales: float
-    Temperature: float
-    Fuel_Price: float
-    CPI: float
-    Unemployment: float
-    Store: int
-    Dept: int
-    IsHoliday: int
+# ============================================
+# RISK SCORING CONFIGURATION
+# ============================================
+# These weights determine how different factors contribute to risk score
 
-@router.post("/")
-def risk(data: RiskInput):
+# Anomaly detection weights
+ANOMALY_DETECTED_WEIGHT = 40        # Points added when anomaly is detected (-1)
+EXTREME_ANOMALY_THRESHOLD = 0.15    # Anomaly score threshold for "extreme"
+EXTREME_ANOMALY_WEIGHT = 10         # Additional points for extreme anomaly scores
 
+# Cluster-based risk (clusters 6,7 historically show poor performance)
+HIGH_RISK_CLUSTERS = [6, 7]         # Cluster IDs associated with high risk
+CLUSTER_RISK_WEIGHT = 20            # Points added for high-risk cluster membership
+
+# Risk level thresholds
+HIGH_RISK_THRESHOLD = 60            # Score >= 60 = HIGH risk
+MEDIUM_RISK_THRESHOLD = 30          # Score >= 30 = MEDIUM risk (else LOW)
+
+
+@router.post("/", response_model=RiskResponse)
+def risk(data: SalesDataInput):
+    """
+    Calculate risk score based on anomaly detection and cluster analysis.
+    
+    Risk factors:
+    - Anomaly detection: +40 points if anomaly detected
+    - Extreme anomaly: +10 points if score exceeds threshold
+    - High-risk cluster: +20 points if in clusters 6 or 7
+    """
+    model = get_model()
     df = pd.DataFrame([data.dict()])
 
-    # anomaly
+    # Detect anomalies
     anomaly_out = model.detect_anomalies(df).iloc[0]
     anomaly_flag = int(anomaly_out["anomaly"])
     anomaly_score = float(anomaly_out["anomaly_score"])
 
-    # cluster
+    # Get cluster assignment
     cluster_id = model.cluster(df)
 
-    # build risk score
+    # Calculate risk score
     score = 0
-    if anomaly_flag == -1:
-        score += 40
-    if abs(anomaly_score) > 0.15:
-        score += 10
-    if cluster_id in [6, 7]:
-        score += 20
+    
+    if anomaly_flag == -1:  # -1 indicates anomaly detected
+        score += ANOMALY_DETECTED_WEIGHT
+    
+    if abs(anomaly_score) > EXTREME_ANOMALY_THRESHOLD:
+        score += EXTREME_ANOMALY_WEIGHT
+    
+    if cluster_id in HIGH_RISK_CLUSTERS:
+        score += CLUSTER_RISK_WEIGHT
 
-    # risk level
-    if score >= 60:
+    # Determine risk level
+    if score >= HIGH_RISK_THRESHOLD:
         level = "HIGH"
-    elif score >= 30:
+    elif score >= MEDIUM_RISK_THRESHOLD:
         level = "MEDIUM"
     else:
         level = "LOW"

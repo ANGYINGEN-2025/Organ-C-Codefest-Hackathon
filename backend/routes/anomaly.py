@@ -1,24 +1,14 @@
 from fastapi import APIRouter
-from pydantic import BaseModel
 import pandas as pd
-from ml.model import SalesModel
+from ml.model import get_model
+from routes.schemas import SalesDataInput, AnomalyResponse
 
 router = APIRouter()
-model = SalesModel()
 
-class AnomalyInput(BaseModel):
-    Weekly_Sales: float
-    Temperature: float
-    Fuel_Price: float
-    CPI: float
-    Unemployment: float
-    Store: int
-    Dept: int
-    IsHoliday: int
-
-@router.post("/")
-def detect_anomaly(data: AnomalyInput):
+@router.post("/", response_model=AnomalyResponse)
+def detect_anomaly(data: SalesDataInput):
     df = pd.DataFrame([data.dict()])
+    model = get_model()  # Get singleton instance
     out = model.detect_anomalies(df).iloc[0]
 
     return {

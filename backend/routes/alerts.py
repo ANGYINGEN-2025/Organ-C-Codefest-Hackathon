@@ -1,10 +1,11 @@
 from fastapi import APIRouter
-from routes.risk import risk, RiskInput
+from routes.risk import risk
+from routes.schemas import SalesDataInput, AlertsResponse
 
 router = APIRouter()
 
-@router.post("/")
-def alerts(data: RiskInput):
+@router.post("/", response_model=AlertsResponse)
+def alerts(data: SalesDataInput):
     r = risk(data)
 
     warnings = []
