@@ -5,8 +5,11 @@ import { demoRecommendations } from "./demo-data";
 // ============================================
 // API CONFIGURATION
 // ============================================
-// Check if we're in development (browser check)
-const isDevelopment = typeof window !== "undefined" && 
+// Force production API or check if we're in development
+// Set FORCE_PRODUCTION to true to always use Render backend
+const FORCE_PRODUCTION = true;
+
+const isDevelopment = !FORCE_PRODUCTION && typeof window !== "undefined" && 
   (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
 
 // Backend API base URL
@@ -15,6 +18,13 @@ const isDevelopment = typeof window !== "undefined" &&
 const API_BASE_URL = isDevelopment 
   ? "http://localhost:8000" 
   : "https://organ-c-codefest-hackathon.onrender.com";
+
+console.log('🌐 API Configuration:', {
+  isDevelopment,
+  FORCE_PRODUCTION,
+  API_BASE_URL,
+  hostname: typeof window !== "undefined" ? window.location.hostname : "server"
+});
 
 // Use mock data (set to true to use demo data instead of real API)
 const USE_MOCK = false;
@@ -143,9 +153,19 @@ export async function fetchKPIMetrics(storeId?: number, dept?: number): Promise<
     if (storeId) params.append('store_id', storeId.toString());
     if (dept) params.append('dept', dept.toString());
     
-    const res = await fetch(`${API_V1}/kpi?${params.toString()}`);
-    if (!res.ok) throw new Error("API error");
+    const url = `${API_V1}/kpi?${params.toString()}`;
+    console.log('🔍 Fetching KPI from:', url);
+    
+    const res = await fetch(url);
+    console.log('📡 KPI Response status:', res.status, res.statusText);
+    
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.error('❌ KPI Error response:', errorText);
+      throw new Error(`API error: ${res.status}`);
+    }
     const json = await res.json();
+    console.log('✅ KPI Data received:', json);
     
     // Map backend response to frontend format
     return {
@@ -203,11 +223,47 @@ export async function fetchTopStores(limit = 10): Promise<any[]> {
 }
 
 // ============================================
-// INVENTORIES (demo only - no backend endpoint)
+// INVENTORIES (generated from stores data)
 // ============================================
 export async function fetchInventories(): Promise<InventorySnapshot[]> {
-  // No backend endpoint for inventories yet
-  return demoInventories();
+  try {
+    const storesData = await fetchStores();
+    const stores = storesData.stores || [];
+    
+    if (stores.length === 0) {
+      console.warn("No stores data available, using demo data");
+      return demoInventories();
+    }
+    
+    // Convert each store into an inventory snapshot
+    return stores.map((store: any) => {
+      const avgDailySales = store.avg_weekly_sales / 7;
+      const currentStock = Math.round(avgDailySales * 30); // 30 days worth of stock
+      const avgDailyDemand = Math.max(1, Math.round(avgDailySales / 100)); // Rough unit estimate
+      
+      return {
+        productId: `prod-store-${store.store_id}`,
+        productName: `Store ${store.store_id} Products`,
+        storeId: `store-${store.store_id}`,
+        category: "General Merchandise",
+        currentStock: currentStock,
+        reorderPoint: Math.round(avgDailyDemand * 7),
+        safetyStock: Math.round(avgDailyDemand * 3),
+        economicOrderQuantity: Math.round(avgDailyDemand * 14),
+        daysUntilStockout: currentStock > 0 && avgDailyDemand > 0 
+          ? Math.round(currentStock / avgDailyDemand) 
+          : 0,
+        riskLevel: (store.avg_weekly_sales > 25000 ? "high" : 
+                    store.avg_weekly_sales > 15000 ? "medium" : "low") as "low" | "medium" | "high" | "critical",
+        recommendedOrderQty: Math.round(avgDailyDemand * 14),
+        lastOrder: new Date().toISOString().split("T")[0],
+        avgDailyDemand: avgDailyDemand,
+      } as InventorySnapshot;
+    });
+  } catch (err) {
+    console.warn("fetchInventories failed, using demo data", err);
+    return demoInventories();
+  }
 }
 
 // ============================================
@@ -228,8 +284,8 @@ export async function fetchForecast(storeId?: number, periods = 6): Promise<any[
     return json.map((item: any) => ({
       date: item.timestamp,
       forecast: item.forecast,
-      lowerInterval: item.lower_bound,
-      upperInterval: item.upper_bound,
+      lowerInterval: item.lower_bound || item.forecast * 0.9,
+      upperInterval: item.upper_bound || item.forecast * 1.1,
       historicalSales: 0,
       anomalyFlag: false
     }));
@@ -250,7 +306,22 @@ export async function fetchRecommendations(storeId?: number): Promise<any> {
     
     const res = await fetch(`${API_V1}/recommendations?${params.toString()}`);
     if (!res.ok) throw new Error("API error");
-    return await res.json();
+    const json = await res.json();
+    
+    // Backend returns: { store_id, risk_level, recommendations: [{type, priority, message, expected_impact}] }
+    // Map to frontend format
+    const recommendations = json.recommendations || [];
+    const storeIdStr = json.store_id ? `store-${json.store_id}` : "";
+    
+    return recommendations.map((item: any, index: number) => ({
+      // Remove id field since backend doesn't provide it
+      title: `${item.type}: ${item.message.split('.')[0]}`,
+      details: `${item.message} ${item.expected_impact || ''}`,
+      storeId: storeIdStr,
+      date: new Date().toISOString().split('T')[0],
+      action: item.type ? item.type.toLowerCase() : "review",
+      severity: item.priority ? item.priority.toLowerCase() : "medium"
+    }));
   } catch (err) {
     console.warn("fetchRecommendations failed, falling back to demo data", err);
     return demoRecommendations();

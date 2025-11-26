@@ -193,11 +193,12 @@ export default function Dashboard() {
   const metricsQuery = useQuery({ queryKey: ["metrics"], queryFn: fetchMetrics, staleTime: 60_000 });
   const inventoriesQuery = useQuery({ queryKey: ["inventories"], queryFn: fetchInventories, staleTime: 60_000 });
   const forecastQuery = useQuery({ queryKey: ["forecast", forecastStoreFilter, forecastPeriods], queryFn: () => fetchForecast(forecastStoreFilter ? parseInt(forecastStoreFilter) : undefined, forecastPeriods), staleTime: 60_000 });
-  const recommendationsQuery = useQuery({ queryKey: ["recommendations"], queryFn: fetchRecommendations, staleTime: 60_000 });
+  const recommendationsQuery = useQuery({ queryKey: ["recommendations"], queryFn: () => fetchRecommendations(), staleTime: 60_000 });
   const kpiQuery = useQuery({ queryKey: ["kpi"], queryFn: () => fetchKPIMetrics(), staleTime: 60_000 });
   const anomaliesQuery = useQuery({ queryKey: ["anomalies"], queryFn: () => fetchAnomalies(), staleTime: 60_000 });
-  const riskQuery = useQuery({ queryKey: ["risk"], queryFn: () => fetchRiskAnalysis(), staleTime: 60_000 });
-  const alertsQuery = useQuery({ queryKey: ["alerts"], queryFn: () => fetchAlerts(), staleTime: 60_000 });
+  // Note: riskQuery and alertsQuery require POST data, not used in initial render
+  // const riskQuery = useQuery({ queryKey: ["risk"], queryFn: () => fetchRiskAnalysis(), staleTime: 60_000 });
+  // const alertsQuery = useQuery({ queryKey: ["alerts"], queryFn: () => fetchAlerts(), staleTime: 60_000 });
 
   // Choose data to display: uploaded (local) when available; otherwise API/demo data
   const displayMetrics = metrics ?? metricsQuery.data ?? null;
@@ -963,8 +964,8 @@ export default function Dashboard() {
                     </tr>
                   </thead>
                   <tbody>
-                    {(recommendationsQuery.data || []).map((rec: any) => (
-                      <tr key={rec.id} className="border-b border-border hover:bg-slate-50 transition-colors">
+                    {(recommendationsQuery.data || []).map((rec: any, index: number) => (
+                      <tr key={`rec-${index}-${rec.storeId}`} className="border-b border-border hover:bg-slate-50 transition-colors">
                         <td className="py-3 px-4 font-semibold">{rec.title}</td>
                         <td className="py-3 px-4 text-foreground/60">{rec.details}</td>
                         <td className="py-3 px-4">{rec.storeId ?? "-"}</td>
