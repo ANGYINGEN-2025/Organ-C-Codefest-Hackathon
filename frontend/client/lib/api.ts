@@ -11,7 +11,7 @@ import { demoRecommendations } from "./demo-data";
 // 
 // To force production API (e.g., testing production from localhost):
 // Set FORCE_PRODUCTION = true
-const FORCE_PRODUCTION = false;
+const FORCE_PRODUCTION = true;
 
 // Detect if we're in development mode
 // Checks if running on localhost/127.0.0.1 (local dev server)
@@ -23,10 +23,10 @@ const isDevelopment = !FORCE_PRODUCTION && isLocalDev;
 
 // Backend API base URL
 // Development: http://localhost:8000 (backend running locally)
-// Production: https://organ-c-codefest-hackathon.onrender.com
+// Production: https://organ-c-codefest-hackathon-production.up.railway.app
 const API_BASE_URL = isDevelopment 
   ? "http://localhost:8000" 
-  : "https://organ-c-codefest-hackathon.onrender.com";
+  : "https://organ-c-codefest-hackathon-production.up.railway.app";
 
 console.log('🌐 API Configuration:', {
   isDevelopment,
@@ -43,7 +43,7 @@ const API_V1 = `${API_BASE_URL}/api/v1`;
 
 // WebSocket URL (derived from API base)
 export const WS_BASE_URL = API_BASE_URL.replace("http", "ws").replace("https", "wss");
-export const WS_ALERTS_URL = `${WS_BASE_URL}/ws/alerts`;
+export const WS_ALERTS_URL = `${WS_BASE_URL}/ws/connections`;
 
 // ============================================
 // AUTHENTICATION

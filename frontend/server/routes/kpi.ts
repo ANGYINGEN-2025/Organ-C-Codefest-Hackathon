@@ -8,7 +8,7 @@ router.get("/kpi_overview", async (req, res) => {
   const { store_id, dept } = req.query as { store_id?: string; dept?: string };
 
   // Backend base URL: allow override via env, default to Render
-  const API_BASE_URL = process.env.BACKEND_API_BASE_URL || "https://organ-c-codefest-hackathon.onrender.com";
+  const API_BASE_URL = process.env.BACKEND_API_BASE_URL || "https://organ-c-codefest-hackathon-production.up.railway.app";
   const API_V1 = `${API_BASE_URL}/api/v1`;
 
   // Build query string
