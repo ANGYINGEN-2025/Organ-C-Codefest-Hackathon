@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 
 # URLs
 LOCAL_URL = "http://localhost:8000/api/v1/iot/"
-PROD_URL = "https://organ-c-codefest-hackathon.onrender.com/api/v1/iot/"
+PROD_URL = " https://organ-c-codefest-hackathon-production.up.railway.app/api/v1/iot/"
 
 
 def generate_random_record():
