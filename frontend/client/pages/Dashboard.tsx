@@ -51,14 +51,13 @@ export default function Dashboard() {
   const [kpiMetrics, setKpiMetrics] = useState<KPIMetrics | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<string>("");
   // Filters for anomaly detection view
-  const [storeFilter, setStoreFilter] = useState<string>("");
-  const [deptFilter, setDeptFilter] = useState<string>("");
+  const [storeFilter, setStoreFilter] = useState<string>("1");
   const [dateFrom, setDateFrom] = useState<string>("");
   const [dateTo, setDateTo] = useState<string>("");
   const [approvedOrders, setApprovedOrders] = useState<number>(0);
   const [savedRevenue, setSavedRevenue] = useState<number>(0);
   // Forecast section state
-  const [forecastStoreFilter, setForecastStoreFilter] = useState<string>("");
+  const [forecastStoreFilter, setForecastStoreFilter] = useState<string>("1");
   const [forecastPeriods, setForecastPeriods] = useState<number>(6);
   const [forecastData, setForecastData] = useState<any[]>([]);
   
@@ -368,19 +367,21 @@ export default function Dashboard() {
     };
   }
 
-  // Generate a small set of synthetic forecast data for a given product.
-  // This is a fallback used when the user hasn't uploaded real data yet.
-  function generateForecastDetails(productId: string, weeks: number): ForecastDetail[] {
-    const today = new Date();
-    const base = 30 + (productId?.length || 0);
-    // Generate weeks + 1 data points to show all week boundaries (start and end of each week)
-    return Array.from({ length: weeks + 1 }).map((_, i) => {
-      const d = new Date(today);
-      d.setDate(today.getDate() + (i * 7)); // Weekly intervals: 0, 7, 14, 21, etc.
-      const historical = Math.max(0, Math.round(base + Math.sin(i / 3) * 8 + (i % 7 === 0 ? 10 : 0)));
-      const forecast = Math.round(historical * (1 + Math.cos(i / 7) * 0.03));
-      const lower = Math.round(forecast * 0.9);
-      const upper = Math.round(forecast * 1.1);
+  // Generate synthetic weekly forecast data (exact number of periods, no extra point)
+  function generateForecastDetails(productId: string, periods: number): ForecastDetail[] {
+    const startDate = new Date('2012-10-26');
+    // Base around avg weekly sales
+    const base = 15000 + (Math.abs(productId?.length || 0) * 200);
+    return Array.from({ length: periods }).map((_, i) => {
+      const d = new Date(startDate);
+      d.setDate(startDate.getDate() + (i * 7));
+      // Seasonal pattern + weekly variance matching Walmart scale
+      const seasonalFactor = 1 + Math.sin(i / 8) * 0.15; // ±15% seasonal
+      const weeklyNoise = Math.sin(i / 3) * 1200 + (i % 4 === 0 ? 2500 : 0); // Holiday spikes
+      const historical = Math.max(0, Math.round(base * seasonalFactor + weeklyNoise));
+      const forecast = Math.round(historical * (1 + Math.cos(i / 5) * 0.05));
+      const lower = Math.round(forecast * 0.88);
+      const upper = Math.round(forecast * 1.12);
       const anomaly = Math.random() > 0.985;
       return {
         productId,
@@ -551,9 +552,8 @@ export default function Dashboard() {
                     onChange={(e) => setForecastStoreFilter(e.target.value)}
                     className="px-3 py-2 border border-border/50 rounded-lg text-sm glass bg-card text-foreground"
                   >
-                    <option value="">All Stores</option>
-                    {Array.from(new Set(displayInventories.map(inv => inv.storeId))).map(storeId => (
-                      <option key={storeId} value={storeId}>{storeId}</option>
+                    {Array.from({ length: 45 }, (_, i) => i + 1).map(storeNum => (
+                      <option key={storeNum} value={storeNum}>Store {storeNum}</option>
                     ))}
                   </select>
                 </div>
@@ -575,7 +575,7 @@ export default function Dashboard() {
             <CardContent>
               <ResponsiveContainer width="100%" height={350}>
                 <LineChart
-                  data={displayForecast.slice(0, forecastPeriods + 1)}
+                  data={displayForecast.slice(0, forecastPeriods)}
                   margin={{ top: 5, right: 30, left: 0, bottom: 5 }}
                 >
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.1)" />
@@ -734,21 +734,8 @@ export default function Dashboard() {
                       value={storeFilter}
                       onChange={(e) => setStoreFilter(e.target.value)}
                     >
-                      <option value="">All Stores</option>
-                      {displayInventories.map((inv) => (
-                        <option key={inv.storeId} value={inv.storeId}>
-                          {inv.storeId}
-                        </option>
-                      ))}
-                    </select>
-                    <select
-                      className="px-3 py-2 border border-border/50 rounded-lg text-sm glass bg-card/50 text-foreground"
-                      value={deptFilter}
-                      onChange={(e) => setDeptFilter(e.target.value)}
-                    >
-                      <option value="">All Departments</option>
-                      {[...new Set(displayInventories.map((i) => i.category || "Uncategorized"))].map((c) => (
-                        <option key={c} value={c}>{c}</option>
+                      {Array.from({ length: 45 }, (_, i) => i + 1).map(storeNum => (
+                        <option key={storeNum} value={storeNum}>Store {storeNum}</option>
                       ))}
                     </select>
                     <input 
@@ -771,8 +758,7 @@ export default function Dashboard() {
                       <tr className="border-b border-border/50">
                         <th className="text-left py-3 px-4 font-semibold text-foreground">Date</th>
                         <th className="text-left py-3 px-4 font-semibold text-foreground">Store</th>
-                        <th className="text-left py-3 px-4 font-semibold text-foreground">Dept</th>
-                        <th className="text-right py-3 px-4 font-semibold text-foreground">Weekly Sales</th>
+                        <th className="text-center py-3 px-4 font-semibold text-foreground">Weekly Sales</th>
                         <th className="text-center py-3 px-4 font-semibold text-foreground">Anomaly</th>
                         <th className="text-right py-3 px-4 font-semibold text-foreground">Anomaly Score</th>
                       </tr>
@@ -782,7 +768,6 @@ export default function Dashboard() {
                         .filter((d) => {
                           if (!d.anomalyFlag) return false;
                           if (storeFilter && (displayInventories.find((i) => i.productId === d.productId)?.storeId !== storeFilter)) return false;
-                          if (deptFilter && (displayInventories.find((i) => i.productId === d.productId)?.category !== deptFilter)) return false;
                           if (dateFrom && new Date(d.date) < new Date(dateFrom)) return false;
                           if (dateTo && new Date(d.date) > new Date(dateTo)) return false;
                           return true;
@@ -796,8 +781,7 @@ export default function Dashboard() {
                             <tr key={d.productId + d.date} className="border-b border-border/50 hover:bg-primary/5 transition-colors">
                               <td className="py-3 px-4 text-foreground">{d.date}</td>
                               <td className="py-3 px-4 text-foreground">{displayInventories.find((i) => i.productId === d.productId)?.storeId ?? "-"}</td>
-                              <td className="py-3 px-4 text-foreground">{displayInventories.find((i) => i.productId === d.productId)?.category ?? "-"}</td>
-                              <td className="py-3 px-4 text-right font-mono text-foreground">{d.historicalSales}</td>
+                              <td className="py-3 px-4 text-center font-mono text-foreground">{d.historicalSales}</td>
                               <td className="py-3 px-4 text-center">
                                 <span className={`font-semibold ${anomaly === -1 ? 'text-red-400' : 'text-green-400'}`}>
                                   {anomaly === -1 ? '-1' : '0'}
