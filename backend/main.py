@@ -27,6 +27,9 @@ from database import Base, engine
 # IMPORTANT: import models BEFORE create_all()
 from models import Alert, AnomalyLog, ClusterLog, RiskLog
 
+# Database cleanup utility
+from db_cleanup import cleanup_old_logs, get_log_counts
+
 
 API_V1_PREFIX = "/api/v1"
 
@@ -59,6 +62,18 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("🔓 API Key Authentication: DISABLED (development mode)")
         logger.info("   Set AUTH_ENABLED=true or API_KEY=<key> to enable")
+    
+    # Cleanup old logs on startup to prevent memory issues
+    try:
+        log_counts_before = get_log_counts()
+        cleanup_stats = cleanup_old_logs()
+        log_counts_after = get_log_counts()
+        logger.info(f"📊 Database stats - Anomaly: {log_counts_after['anomaly_logs']}, "
+                   f"Cluster: {log_counts_after['cluster_logs']}, "
+                   f"Risk: {log_counts_after['risk_logs']}, "
+                   f"Alerts: {log_counts_after['alerts']}")
+    except Exception as e:
+        logger.warning(f"⚠️  Database cleanup failed (non-critical): {e}")
     
     yield  # App runs here
     
@@ -108,6 +123,30 @@ app.add_middleware(
 @app.get("/health", response_model=HealthResponse, tags=["Health"])
 def health_check():
     return {"status": "ok"}
+
+
+# ============================================
+# DATABASE CLEANUP (Admin endpoint)
+# ============================================
+@app.post("/api/v1/admin/cleanup", tags=["Admin"])
+def cleanup_database(retention_days: int = 7):
+    """
+    Manually trigger database cleanup to remove old logs.
+    
+    This helps prevent memory issues by removing old IoT logs.
+    Default retention: 7 days
+    """
+    try:
+        stats = cleanup_old_logs(retention_days=retention_days)
+        current_counts = get_log_counts()
+        return {
+            "status": "success",
+            "cleanup_stats": stats,
+            "current_counts": current_counts
+        }
+    except Exception as e:
+        logger.error(f"Cleanup failed: {e}", exc_info=True)
+        return {"status": "error", "message": str(e)}
 
 
 # ============================================

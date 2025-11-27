@@ -10,7 +10,8 @@ def kpi_overview(
     dept: int | None = Query(default=None, description="Filter by department ID")
 ):
     """Get KPI metrics for sales data, optionally filtered by store and department."""
-    df = load_raw_data()
+    # Use view (no copy) since we're only filtering/reading
+    df = load_raw_data(copy=False)
 
     if store_id is not None:
         df = df[df["Store"] == store_id]

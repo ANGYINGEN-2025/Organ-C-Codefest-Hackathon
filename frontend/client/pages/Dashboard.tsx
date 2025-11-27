@@ -105,16 +105,10 @@ export default function Dashboard() {
             const message = JSON.parse(event.data);
             
             if (message.type === "iot_update") {
-              // Add new IoT data point
+              // Add new IoT data point and update KPI metrics in one operation
               setIotDataPoints((prev) => {
-                const updated = [...prev, message];
-                // Keep only last 100 data points to prevent memory issues
-                return updated.slice(-100);
-              });
-
-              // Update KPI metrics based on accumulated IoT data
-              setIotDataPoints((prev) => {
-                const updated = [...prev, message].slice(-100);
+                const updated = [...prev, message].slice(-100); // Keep only last 100 data points
+                
                 // Calculate metrics from accumulated data
                 const salesValues = updated.map((d: any) => d.data?.weekly_sales || 0).filter((v: number) => v > 0);
                 if (salesValues.length > 0) {
